@@ -1,19 +1,33 @@
 import 'server-only';
 
-import { eq, sql } from "drizzle-orm";
-import { accounts } from "../schema";
-import { db } from "@/db";
+// import { eq, sql } from "drizzle-orm";
+// import { accounts } from "../schema";
+// import { db } from "@/db";
 import type { Account } from "next-auth";
 import { env } from "@/lib/env.server";
 import type { CredentialRequest } from "google-auth-library";
 import { RefreshTokenError } from "@/auth";
+import prisma from '../prisma';
 
 // When user logs out, delete all tokens for that account
 export const deleteAccountTokens = async (userId: string) => {
   try {
-    await db
-      .update(accounts)
-      .set({
+  //   await db
+  //     .update(accounts)
+  //     .set({
+  //       refreshToken: null,
+  //       accessToken: null,
+  //       expiresAt: null,
+  //       tokenType: null,
+  //       scope: null,
+  //       idToken: null,
+  //       sessionState: null,
+  //     })
+  //     .where(eq(accounts.userId, userId));
+  //   console.log("Deleted tokens for user ", userId);
+  // }
+    await prisma.accounts.updateMany({
+      data: {
         refreshToken: null,
         accessToken: null,
         expiresAt: null,
@@ -21,10 +35,14 @@ export const deleteAccountTokens = async (userId: string) => {
         scope: null,
         idToken: null,
         sessionState: null,
-      })
-      .where(eq(accounts.userId, userId));
+      },
+      where: {
+        userId: userId
+      }
+    });
     console.log("Deleted tokens for user ", userId);
-  } catch (error) {
+  }
+   catch (error) {
     console.error("Error occurred at deleteTokens ", error);
     throw error;
   }
@@ -44,20 +62,38 @@ export const updateAccountTokens = async (account: Account) => {
       id_token,
       session_state,
     } = account;
-    await db
-      .update(accounts)
-      .set({
+    // await db
+    //   .update(accounts)
+    //   .set({
+    //     refreshToken: refresh_token,
+    //     accessToken: access_token,
+    //     expiresAt: expires_at,
+    //     tokenType: token_type,
+    //     scope,
+    //     idToken: id_token,
+    //     sessionState: session_state as string,
+    //   })
+    //   .where(
+    //     sql`${accounts.provider} = ${provider} AND ${accounts.providerAccountId} = ${providerAccountId}`,
+    //   );
+
+    await prisma.accounts.update({
+      data:{
         refreshToken: refresh_token,
         accessToken: access_token,
         expiresAt: expires_at,
         tokenType: token_type,
-        scope,
+        scope: scope,
         idToken: id_token,
         sessionState: session_state as string,
-      })
-      .where(
-        sql`${accounts.provider} = ${provider} AND ${accounts.providerAccountId} = ${providerAccountId}`,
-      );
+      },
+      where: {
+        provider_providerAccountId: {
+          provider: provider,
+          providerAccountId: providerAccountId,
+        },
+      },
+    })
   } catch (error) {
     console.error("Error occurred at updateAccountTokens ", error);
     throw error;
@@ -94,21 +130,37 @@ export const refreshAccessToken = async (
       refresh_token,
     } = tokens;
 
-    await db
-      .update(accounts)
-      .set({
-        refreshToken: refresh_token ?? refreshToken,
+    // await db
+    //   .update(accounts)
+    //   .set({
+    //     refreshToken: refresh_token ?? refreshToken,
+    //     accessToken: access_token,
+    //     expiresAt: Math.floor(Date.now() / 1000 + expires_in),
+    //     tokenType: token_type,
+    //     scope,
+    //     idToken: id_token,
+    //   })
+    //   .where(
+    //     sql`${accounts.provider} = ${"google"} AND ${
+    //       accounts.userId
+    //     } = ${userId}`,
+    //   );
+    await prisma.accounts.updateMany({
+      data:{
+        refreshToken: refresh_token,
         accessToken: access_token,
         expiresAt: Math.floor(Date.now() / 1000 + expires_in),
         tokenType: token_type,
-        scope,
+        scope: scope,
         idToken: id_token,
-      })
-      .where(
-        sql`${accounts.provider} = ${"google"} AND ${
-          accounts.userId
-        } = ${userId}`,
-      );
+      },
+      where: {
+        AND:[
+          { provider: "google" },
+          { userId: userId }
+        ]
+      }
+    });
   } catch (error) {
     const errorObject = error as { error: string; error_description: string };
 
@@ -126,8 +178,15 @@ export const getAccountByProvider = async (
   providerAccountId: string,
 ) => {
   try {
-    const user = await db.query.accounts.findFirst({
-      where: sql`${accounts.provider} = ${provider} AND ${accounts.providerAccountId} = ${providerAccountId}`,
+    // const user = await db.query.accounts.findFirst({
+    //   where: sql`${accounts.provider} = ${provider} AND ${accounts.providerAccountId} = ${providerAccountId}`,
+    // });
+
+    const user = await prisma.accounts.findFirst({
+      where: { 
+          provider: provider,
+          providerAccountId: providerAccountId,
+       }
     });
 
     return user;
@@ -139,12 +198,17 @@ export const getAccountByProvider = async (
 
 export const getAccountByUser = async (userId: string) => {
   try {
-    const user = await db.query.accounts.findFirst({
-      where: sql`${accounts.provider} = ${"google"} AND ${
-        accounts.userId
-      } = ${userId}`,
-    });
-
+    // const user = await db.query.accounts.findFirst({
+    //   where: sql`${accounts.provider} = ${"google"} AND ${
+    //     accounts.userId
+    //   } = ${userId}`,
+    // });
+    const user= await prisma.accounts.findFirst({
+      where: {
+        provider: "google",
+        userId: userId
+      }
+    })
     return user;
   } catch (error) {
     console.error("Error occurred at getAccountByUserAndProvider ", error);
